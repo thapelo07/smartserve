@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from database import SessionLocal, engine
 import models, crud, schemas
-from ai.classifier import classify_issue  # we’ll use this later for AI
+from ai.classifier import classify_issue 
 from utils.otp import generate_otp, send_otp_email
 
 
