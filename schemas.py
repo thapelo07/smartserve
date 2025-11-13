@@ -1,17 +1,17 @@
 from pydantic import BaseModel
 from datetime import datetime
 
-
+# ✅ REPORT SCHEMAS
 class ReportBase(BaseModel):
     description: str
     location: str | None = None
-    latitude: float | None = None
-    longitude: float | None = None
+    latitude: float = 0.0
+    longitude: float = 0.0
 
 class ReportCreate(ReportBase):
     description: str
     location: str
-    user_id: int | None = None
+    user_id: int | None = None# 🔗 Connect the report to a user
 
 class ReportResponse(ReportBase):
     id: int
@@ -21,7 +21,7 @@ class ReportResponse(ReportBase):
     class Config:
         from_attributes = True
 
-
+# USER
 class UserBase(BaseModel):
     name: str
     email: str
@@ -38,7 +38,7 @@ class UserResponse(UserBase):
     class Config:
         from_attributes = True
 
-
+# FEEDBACK
 class FeedbackBase(BaseModel):
     rating: int
     comments: str | None = None
@@ -53,6 +53,7 @@ class FeedbackResponse(FeedbackBase):
     class Config:
         from_attributes = True
 
+# NOTIFICATION
 class NotificationBase(BaseModel):
     message: str
     user_id: int

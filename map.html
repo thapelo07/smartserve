@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SmartServe GIS Map</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <style>
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+    }
+    #map {
+      height: 100vh;
+      width: 100%;
+    }
+    .legend {
+      background: white;
+      padding: 10px;
+      line-height: 1.5;
+      border-radius: 5px;
+      box-shadow: 0 0 5px rgba(0,0,0,0.3);
+    }
+  </style>
+</head>
+<body>
+
+  <div id="map"></div>
+
+  <script>
+    // Initialize map (centered roughly around Gauteng)
+    const map = L.map('map').setView([-26.2, 28.0], 9);
+
+    // Add base layer
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 18,
+      attribution: '© OpenStreetMap contributors'
+    }).addTo(map);
+
+    // Fetch reports from FastAPI backend
+    async function loadReports() {
+      try {
+        const response = await fetch('http://127.0.0.1:8000/api/reports');
+        const reports = await response.json();
+
+        reports.forEach(report => {
+          if (report.latitude && report.longitude) {
+            const marker = L.marker([report.latitude, report.longitude]).addTo(map);
+            marker.bindPopup(`
+              <strong>${report.description}</strong><br>
+              📍 ${report.location}<br>
+              🕓 ${new Date(report.created_at).toLocaleString()}<br>
+              ⚙️ Status: <b>${report.status}</b>
+            `);
+          }
+        });
+      } catch (err) {
+        console.error('Failed to load reports:', err);
+      }
+    }
+
+    loadReports();
+  </script>
+</body>
+</html>
