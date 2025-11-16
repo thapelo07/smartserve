@@ -1,135 +1,172 @@
-import models, schemas
 from sqlalchemy.orm import Session
 from fastapi import HTTPException
 from utils.geocode import get_coordinates
-from datetime import datetime, timedelta
-from models import OTP
+import models, schemas
 
+# -----------------------------------
 # USERS
+# -----------------------------------
 def create_user(db: Session, user: schemas.UserCreate):
     existing = db.query(models.User).filter(models.User.email == user.email).first()
+
     if existing:
         raise HTTPException(status_code=400, detail="Email already registered")
-    new_user = models.User(**user.dict())
-    db.add(new_user)
-    db.commit()
-    db.refresh(new_user)
-    return new_user
+
+    try:
+        new_user = models.User(**user.dict())
+        db.add(new_user)
+        db.commit()
+        db.refresh(new_user)
+        return new_user
+    except Exception:
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Database error when creating user")
 
 
 def get_users(db: Session):
-    return db.query(models.User).all()
+    try:
+        return db.query(models.User).all()
+    except Exception:
+        raise HTTPException(status_code=500, detail="Failed to fetch users")
 
 
-# REPORTS
+# -----------------------------------
+# REPORTS (GIS + CRUD)
+# -----------------------------------
 def create_report(db: Session, report: schemas.ReportCreate):
-    lat, lon = get_coordinates(report.location)
-    if not lat or not lon:
-        raise HTTPException(status_code=400, detail="Invalid location")
+
     
+    user_id = report.user_id if report.user_id not in (0, "0", "", None) else None
+
+    # 2) Geo-coding with safe error handling
+    try:
+        lat, lon = get_coordinates(report.location)
+    except Exception:
+        lat, lon = None, None
+
+    # If geocoding fails
+    if lat is None or lon is None:
+        lat, lon = 0.0, 0.0
+
     new_report = models.Report(
         description=report.description,
         location=report.location,
         latitude=lat,
         longitude=lon,
-        user_id=report.user_id if report.user_id else None,
+        user_id=user_id,
         status="Pending"
     )
-    db.add(new_report)
-    db.commit()
-    db.refresh(new_report)
-    print(f"✅ Saved report with coordinates: ({lat}, {lon})")
-    return new_report
 
+    try:
+        db.add(new_report)
+        db.commit()
+        db.refresh(new_report)
+        return new_report
+    except Exception as e:
+        db.rollback()
+        print("🔥 DB ERROR:", e)
+        raise HTTPException(status_code=500, detail="Failed to create report")
 
 def get_reports(db: Session):
-    return db.query(models.Report).all()
+    try:
+        return db.query(models.Report).all()
+    except Exception:
+        raise HTTPException(status_code=500, detail="Failed to fetch reports")
 
 
-# FEEDBACK
-def create_feedback(db: Session, feedback: schemas.FeedbackCreate):
-    db_feedback = models.Feedback(**feedback.dict())
-    db.add(db_feedback)
-    db.commit()
-    db.refresh(db_feedback)
-    return db_feedback
-
-
-def get_feedback(db: Session):
-    return db.query(models.Feedback).all()
-
-
-# NOTIFICATIONS
-def create_notification(db: Session, message: str, user_id: int):
-    db_notification = models.Notification(message=message, user_id=user_id)
-    db.add(db_notification)
-    db.commit()
-    db.refresh(db_notification)
-    return db_notification
-
-
-
-def create_otp(db: Session, email: str, otp_code: str):
-    expires_at = datetime.utcnow() + timedelta(minutes=5)
-    otp_entry = OTP(email=email, code=otp_code, expires_at=expires_at)
-    db.add(otp_entry)
-    db.commit()
-    db.refresh(otp_entry)
-    return otp_entry
-
-def verify_otp(db: Session, email: str, otp_code: str):
-    otp_entry = (
-        db.query(OTP)
-        .filter(OTP.email == email, OTP.code == otp_code, OTP.is_used == False)
-        .first()
-    )
-    if not otp_entry:
-        return False
-
-    if otp_entry.expires_at < datetime.utcnow():
-        return False
-
-    otp_entry.is_used = True
-    db.commit()
-    return True
-
-
-# ✅ Update report details (PATCH)
-def update_report_partial(db: Session, report_id: int, update_data: dict):
-    report = db.query(models.Report).filter(models.Report.id == report_id).first()
-    if not report:
-        raise HTTPException(status_code=404, detail="Report not found")
-
-    for key, value in update_data.items():
-        if hasattr(report, key) and value is not None:
-            setattr(report, key, value)
-
-    db.commit()
-    db.refresh(report)
-    return report
-
-
-# ✅ Delete a report (DELETE)
 def delete_report(db: Session, report_id: int):
     report = db.query(models.Report).filter(models.Report.id == report_id).first()
     if not report:
         raise HTTPException(status_code=404, detail="Report not found")
 
-    db.delete(report)
-    db.commit()
-    return {"message": f"Report {report_id} deleted successfully"}
+    try:
+        db.delete(report)
+        db.commit()
+        return {"message": "Report deleted successfully"}
+    except Exception:
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Failed to delete report")
+
 
 def patch_report(db: Session, report_id: int, updates: dict):
+    report = db.query(models.Report).filter(models.Report.id == report_id).first()
+
+    if not report:
+        raise HTTPException(status_code=404, detail="Report not found")
+
+    try:
+        for key, value in updates.items():
+            if hasattr(report, key):
+                setattr(report, key, value)
+
+        db.commit()
+        db.refresh(report)
+        return report
+    except Exception:
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Failed to update report")
+
+
+# -----------------------------------
+# FEEDBACK
+# -----------------------------------
+def create_feedback(db: Session, feedback: schemas.FeedbackCreate):
+    try:
+        db_feedback = models.Feedback(**feedback.dict())
+        db.add(db_feedback)
+        db.commit()
+        db.refresh(db_feedback)
+        return db_feedback
+    except Exception:
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Failed to submit feedback")
+
+
+def get_feedback(db: Session):
+    try:
+        return db.query(models.Feedback).all()
+    except Exception:
+        raise HTTPException(status_code=500, detail="Failed to fetch feedback")
+
+
+# -----------------------------------
+# NOTIFICATIONS
+# -----------------------------------
+def create_notification(db: Session, message: str, user_id: int):
+    try:
+        notification = models.Notification(message=message, user_id=user_id)
+        db.add(notification)
+        db.commit()
+        db.refresh(notification)
+        return notification
+    except Exception:
+        db.rollback()
+        raise HTTPException(status_code=500, detail="Failed to create notification")
+
+# ANALYTICS
+def get_total_reports(db):
+    return db.query(models.Report).count()
+
+def get_pending_reports(db):
+    return db.query(models.Report).filter(models.Report.status == "Pending").count()
+
+def get_resolved_reports(db):
+    return db.query(models.Report).filter(models.Report.status == "Resolved").count()
+
+def get_reports_by_location(db):
+    results = (
+        db.query(models.Report.location, models.func.count(models.Report.id))
+        .group_by(models.Report.location)
+        .all()
+    )
+    return [{"location": loc, "count": count} for loc, count in results]
+
+def attach_image(db, report_id, file_path):
     report = db.query(models.Report).filter(models.Report.id == report_id).first()
     if not report:
         raise HTTPException(status_code=404, detail="Report not found")
 
-    # Loop through only the fields that were passed in the PATCH request
-    for key, value in updates.items():
-        if hasattr(report, key):
-            setattr(report, key, value)
-
+    report.image_path = file_path
     db.commit()
     db.refresh(report)
     return report
-

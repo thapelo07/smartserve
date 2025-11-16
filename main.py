@@ -1,25 +1,50 @@
-from fastapi import FastAPI, HTTPException, Depends
+from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
-from database import SessionLocal, engine
-import models, crud, schemas
-from ai.classifier import classify_issue 
-from utils.otp import generate_otp, send_otp_email
+import logging
+from sqlalchemy import func
+from fastapi import UploadFile, File, Form
+import shutil
+import os
 
+import models, schemas, crud
+from database import engine, SessionLocal
 
+# Create tables
 models.Base.metadata.create_all(bind=engine)
 
-app = FastAPI(title="SmartServe API", version="1.0")
+app = FastAPI(title="SmartServe API", version="2.0")
 
+# --------------------------------------------------------
+# GLOBAL CORS
+# --------------------------------------------------------
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    allow_credentials=True
 )
 
-# Dependency
+# --------------------------------------------------------
+# GLOBAL ERROR HANDLER
+# --------------------------------------------------------
+@app.middleware("http")
+async def error_logger(request, call_next):
+    try:
+        return await call_next(request)
+
+    except Exception as e:
+        logging.error(f"🔥 INTERNAL ERROR: {e}")
+        return JSONResponse(
+            status_code=500,
+            content={"error": "Server failed internally. Try again later."}
+        )
+
+# --------------------------------------------------------
+# DB Dependency
+# --------------------------------------------------------
 def get_db():
     db = SessionLocal()
     try:
@@ -27,52 +52,16 @@ def get_db():
     finally:
         db.close()
 
+# --------------------------------------------------------
+# ROOT
+# --------------------------------------------------------
 @app.get("/")
-def root():
+def home():
     return {"message": "SmartServe Backend Running"}
 
-# ✅ Create new report
-@app.post("/api/reports", response_model=schemas.ReportResponse)
-def create_report(report: schemas.ReportCreate, db: Session = Depends(get_db)):
-    return crud.create_report(db=db, report=report)
-
-# ✅ Get all reports
-@app.get("/api/reports", response_model=list[schemas.ReportResponse])
-def get_reports(db: Session = Depends(get_db)):
-    return crud.get_reports(db)
-
-# ✅ 🆕 Update report status (add this section here)
-@app.put("/api/reports/{report_id}")
-def update_report(report_id: int, status: str, db: Session = Depends(get_db)):
-    """
-    Update a report's status by its ID.
-    Example: /api/reports/1?status=Resolved
-    """
-    updated = crud.update_report_status(db, report_id, status)
-    if not updated:
-        raise HTTPException(status_code=404, detail="Report not found")
-    return updated
-
-# 🗑️ DELETE a report
-@app.delete("/api/reports/{report_id}")
-def delete_report(report_id: int, db: Session = Depends(get_db)):
-    return crud.delete_report(db, report_id)
-
-
-# 🩹 PATCH (partial update) a report
-@app.patch("/api/reports/{report_id}")
-def patch_report(report_id: int, updates: dict, db: Session = Depends(get_db)):
-    """
-    Example JSON body:
-    {
-      "status": "Resolved",
-      "description": "Technicians fixed the issue"
-    }
-    """
-    return crud.patch_report(db, report_id, updates)
-
-
+# --------------------------------------------------------
 # USERS
+# --------------------------------------------------------
 @app.post("/api/users", response_model=schemas.UserResponse)
 def create_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
     return crud.create_user(db, user)
@@ -81,23 +70,47 @@ def create_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
 def get_users(db: Session = Depends(get_db)):
     return crud.get_users(db)
 
+# --------------------------------------------------------
+# REPORTS
+# --------------------------------------------------------
+@app.post("/api/reports", response_model=schemas.ReportResponse)
+def create_report(report: schemas.ReportCreate, db: Session = Depends(get_db)):
+    return crud.create_report(db, report)
 
-@app.post("/api/send_otp")
-def send_otp(email: str, db: Session = Depends(get_db)):
-    otp_code = generate_otp()
-    crud.create_otp(db, email=email, otp_code=otp_code)
-    send_otp_email(email, otp_code)
-    return {"message": f"OTP sent to {email}"}
+@app.get("/api/reports", response_model=list[schemas.ReportResponse])
+def get_reports(db: Session = Depends(get_db)):
+    return crud.get_reports(db)
 
+@app.delete("/api/reports/{report_id}")
+def delete_report(report_id: int, db: Session = Depends(get_db)):
+    return crud.delete_report(db, report_id)
 
-@app.post("/api/verify_otp")
-def verify_otp(email: str, otp: str, db: Session = Depends(get_db)):
-    is_valid = crud.verify_otp(db, email=email, otp_code=otp)
-    if not is_valid:
-        raise HTTPException(status_code=400, detail="Invalid or expired OTP")
-    return {"message": "OTP verified successfully"}
+# ---------------------------
+# ANALYTICS ROUTES
+# ---------------------------
+@app.get("/api/analytics/total")
+def analytics_total(db: Session = Depends(get_db)):
+    return {"total_reports": crud.get_total_reports(db)}
 
+@app.get("/api/analytics/pending")
+def analytics_pending(db: Session = Depends(get_db)):
+    return {"pending_reports": crud.get_pending_reports(db)}
+
+@app.get("/api/analytics/resolved")
+def analytics_resolved(db: Session = Depends(get_db)):
+    return {"resolved_reports": crud.get_resolved_reports(db)}
+
+@app.get("/api/analytics/by-location")
+def analytics_by_location(db: Session = Depends(get_db)):
+    return {"locations": crud.get_reports_by_location(db)}
+
+@app.patch("/api/reports/{report_id}")
+def patch_report(report_id: int, updates: dict, db: Session = Depends(get_db)):
+    return crud.patch_report(db, report_id, updates)
+
+# --------------------------------------------------------
 # FEEDBACK
+# --------------------------------------------------------
 @app.post("/api/feedback", response_model=schemas.FeedbackResponse)
 def create_feedback(feedback: schemas.FeedbackCreate, db: Session = Depends(get_db)):
     return crud.create_feedback(db, feedback)
@@ -105,3 +118,40 @@ def create_feedback(feedback: schemas.FeedbackCreate, db: Session = Depends(get_
 @app.get("/api/feedback", response_model=list[schemas.FeedbackResponse])
 def get_feedback(db: Session = Depends(get_db)):
     return crud.get_feedback(db)
+
+# --------------------------------------------------------
+# NOTIFICATIONS
+# --------------------------------------------------------
+@app.post("/api/notifications/{user_id}")
+def send_notification(user_id: int, message: str, db: Session = Depends(get_db)):
+    return crud.create_notification(db, message, user_id)
+
+UPLOAD_DIR = "uploads"
+os.makedirs(UPLOAD_DIR, exist_ok=True)
+
+@app.post("/api/reports/upload-image")
+async def upload_report_image(
+    report_id: int = Form(...),
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db)
+):
+    # Ensure it's an image
+    if not file.content_type.startswith("image/"):
+        raise HTTPException(status_code=400, detail="Only image files allowed")
+
+    # Create file path
+    ext = file.filename.split(".")[-1].lower()
+    file_path = f"{UPLOAD_DIR}/report_{report_id}.{ext}"
+
+    # Save file to disk
+    with open(file_path, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+
+    # 🔗 Update DB record
+    updated_report = crud.attach_image(db, report_id, file_path)
+
+    return {
+        "message": "Image uploaded and attached",
+        "file_path": file_path,
+        "report": updated_report
+    }

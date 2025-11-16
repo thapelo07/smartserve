@@ -1,66 +1,89 @@
-from pydantic import BaseModel
+# schemas.py
 from datetime import datetime
+from typing import Optional, List
+from pydantic import BaseModel, Field
 
-# ✅ REPORT SCHEMAS
-class ReportBase(BaseModel):
-    description: str
-    location: str | None = None
-    latitude: float = 0.0
-    longitude: float = 0.0
-
-class ReportCreate(ReportBase):
-    description: str
-    location: str
-    user_id: int | None = None# 🔗 Connect the report to a user
-
-class ReportResponse(ReportBase):
-    id: int
-    status: str
-    created_at: datetime
-
-    class Config:
-        from_attributes = True
-
-# USER
+# Pydantic v2-friendly model config:
+# `model_config = {"from_attributes": True}` lets Pydantic read SQLAlchemy models.
+# If your environment still uses pydantic v1, orm_mode will still work but may warn.
 class UserBase(BaseModel):
-    name: str
-    email: str
-    role: str = "citizen"
+    name: str = Field(..., min_length=2)
+    email: str = Field(..., min_length=5)
+    phone: Optional[str] = None
+    zone: Optional[str] = None
+
+    model_config = {"from_attributes": True}
 
 class UserCreate(UserBase):
-    password: str
+    password: str = Field(..., min_length=6)
+    role: Optional[str] = "citizen"
 
 class UserResponse(UserBase):
     id: int
-    phone: str | None = None
-    zone: str | None = None
+    role: str
     created_at: datetime
-    class Config:
-        from_attributes = True
 
-# FEEDBACK
-class FeedbackBase(BaseModel):
-    rating: int
-    comments: str | None = None
+    model_config = {"from_attributes": True}
 
-class FeedbackCreate(FeedbackBase):
-    report_id: int
-    user_id: int
+class ReportBase(BaseModel):
+    description: str = Field(..., min_length=3)
+    location: str = Field(..., min_length=2)
 
-class FeedbackResponse(FeedbackBase):
+    model_config = {"from_attributes": True}
+
+class ReportCreate(ReportBase):
+    user_id: Optional[int] = None
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    # When frontend sends multipart/form-data, use these form names
+
+class ReportResponse(ReportBase):
+    id: int
+    latitude: float
+    longitude: float
+    status: str
+    issue_type: Optional[str] = None
+    image_url: Optional[str] = None
+    user_id: Optional[int] = None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+class FeedbackCreate(BaseModel):
+    user_id: Optional[int] = None
+    message: str = Field(..., min_length=3)
+
+    model_config = {"from_attributes": True}
+
+class FeedbackResponse(FeedbackCreate):
     id: int
     created_at: datetime
-    class Config:
-        from_attributes = True
 
-# NOTIFICATION
-class NotificationBase(BaseModel):
-    message: str
+    model_config = {"from_attributes": True}
+
+class NotificationCreate(BaseModel):
     user_id: int
+    message: str = Field(..., min_length=1)
 
-class NotificationResponse(NotificationBase):
+    model_config = {"from_attributes": True}
+
+class NotificationResponse(NotificationCreate):
     id: int
-    is_read: int
     created_at: datetime
-    class Config:
-        from_attributes = True
+    read: Optional[str] = None
+
+    model_config = {"from_attributes": True}
+
+class OTPCreate(BaseModel):
+    email: str
+    code: str
+
+    model_config = {"from_attributes": True}
+
+class OTPResponse(OTPCreate):
+    id: int
+    expires_at: datetime
+    is_used: Optional[str] = None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
