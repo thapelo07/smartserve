@@ -9,18 +9,21 @@ export default function Login() {
 
   const handleChange = e => setForm({ ...form, [e.target.name]: e.target.value });
 
-  const handleSubmit = async e => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    setMsg('');
+    setMsg("");
+  
     try {
-      const res = await axios.post('http://127.0.0.1:8000/api/login', form);
-      setMsg('Login successful: ' + JSON.stringify(res.data));
-      if (res.data.user_id) localStorage.setItem('smartserve_user_id', res.data.user_id);
-      navigate('/report');
+      const res = await axios.post("http://127.0.0.1:8000/api/login", form);
+  
+      localStorage.setItem("smartserve_user_id", res.data.user_id);
+      navigate("/report");  
+  
     } catch (err) {
-      setMsg(err.response?.data?.detail || 'Login error');
+      setMsg(err.response?.data?.detail || "Login error");
     }
   };
+  
 
   return (
     <div className="d-flex justify-content-center">
