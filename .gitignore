@@ -1,5 +1,28 @@
+# Python cache
 __pycache__/
 *.pyc
-.env
-smartserve.db
+*.pyo
+
+# Virtual environments
+venv/
+env/
+
+# FastAPI upload folder
 uploads/
+
+# SQLite or any local db
+*.db
+
+# Environment variables
+.env
+
+# Node modules (for frontend)
+node_modules/
+
+# Build files
+dist/
+build/
+
+# OS files
+.DS_Store
+Thumbs.db
