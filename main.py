@@ -70,6 +70,23 @@ def create_user(user: schemas.UserCreate, db: Session = Depends(get_db)):
 def get_users(db: Session = Depends(get_db)):
     return crud.get_users(db)
 
+
+from passlib.context import CryptContext
+
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+@app.post("/api/login")
+def login_user(credentials: schemas.LoginRequest, db: Session = Depends(get_db)):
+    user = db.query(models.User).filter(models.User.email == credentials.email).first()
+
+    if not user:
+        raise HTTPException(status_code=400, detail="User not found")
+
+    if not pwd_context.verify(credentials.password, user.password):
+        raise HTTPException(status_code=401, detail="Incorrect password")
+
+    return {"message": "Login successful", "user_id": user.id}
+
 # --------------------------------------------------------
 # REPORTS
 # --------------------------------------------------------

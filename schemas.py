@@ -25,6 +25,10 @@ class UserResponse(UserBase):
 
     model_config = {"from_attributes": True}
 
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
 class ReportBase(BaseModel):
     description: str = Field(..., min_length=3)
     location: str = Field(..., min_length=2)
