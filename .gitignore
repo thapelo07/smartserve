@@ -3,6 +3,10 @@ __pycache__/
 *.pyc
 *.pyo
 
+# AI Model output
+smartserve/ai_model/model.pkl
+smartserve/ai_model/vectorizer.pkl
+
 # Virtual environments
 venv/
 env/

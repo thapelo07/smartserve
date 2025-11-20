@@ -7,7 +7,7 @@ from sqlalchemy import func
 from fastapi import UploadFile, File, Form
 import shutil
 import os
-
+from ai_model.analytics import predict_issue, predict_next_issue, forecast_next_issue_global
 import models, schemas, crud
 from database import engine, SessionLocal
 
@@ -172,3 +172,16 @@ async def upload_report_image(
         "file_path": file_path,
         "report": updated_report
     }
+
+
+@app.post("/api/ai/predict")
+def ai_predict(payload: dict):
+    return predict_issue(payload["text"])
+
+@app.get("/api/ai/predict-location")
+def ai_predict_location(loc: str):
+    return predict_next_issue(loc)
+
+@app.get("/api/ai/predict-global")
+def ai_predict_global():
+    return forecast_next_issue_global()
